@@ -3,6 +3,7 @@
 # ============================================
 # PIXIE DUST ATTACKER - Offline WPS Crack Tool
 # Версия: 3.0 | Только Pixie Dust, одна попытка
+# Поддержка интерактивного и неинтерактивного режима
 # ============================================
 
 RED='\033[0;31m'
@@ -23,6 +24,17 @@ OUTPUT_DIR="pixie_results"  # Директория для результатов
 OLED_SCRIPT="/root/oled_display.py"  # Путь к скрипту OLED
 FIFO_PATH="/tmp/oled_fifo"
 AUTO_TIMEOUT=15             # Секунд до автоматического выбора режима G
+# ============================================
+
+# ============================================
+# ОПРЕДЕЛЕНИЕ ИНТЕРАКТИВНОГО РЕЖИМА
+# ============================================
+if [ ! -t 0 ]; then
+    NON_INTERACTIVE=1
+    FORCE_MODE="G"
+else
+    NON_INTERACTIVE=0
+fi
 # ============================================
 
 MONITOR_INTERFACE=""
@@ -223,7 +235,7 @@ find_wps_networks() {
 }
 
 # ============================================
-# ВЫБОР ЦЕЛИ (с автотаймаутом)
+# ВЫБОР ЦЕЛИ (с автотаймаутом и поддержкой non-interactive)
 # ============================================
 
 select_target() {
@@ -232,6 +244,15 @@ select_target() {
     echo -e "${WHITE}                    ВЫБОР ЦЕЛИ ДЛЯ АТАКИ                        ${NC}"
     print_separator
     echo ""
+    
+    # Неинтерактивный режим
+    if [ $NON_INTERACTIVE -eq 1 ]; then
+        AUTO_MODE=1
+        SELECTED_MODE="good"
+        print_info "Неинтерактивный режим: выбран режим G (только хороший сигнал)"
+        oled_line1 "Mode: Good signal (auto)"
+        return 0
+    fi
     
     local i=1
     declare -a bssids
