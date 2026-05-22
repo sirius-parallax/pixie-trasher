@@ -5,7 +5,7 @@
 # Запускает атаку в цикле
 # ============================================
 
-INTERVAL=600  # 10 минут между циклами (измените под себя)
+INTERVAL=600  # 10 минут между циклами
 LOG_FILE="/var/log/pixie-attacker.log"
 
 log() {
@@ -20,7 +20,7 @@ while true; do
     # Запускаем основной скрипт в неинтерактивном режиме
     /root/pixie_attacker.sh -t 30 -o /var/log/pixie_results < /dev/null
     
-    local exit_code=$?
+    exit_code=$?
     log "Attack cycle finished with exit code: $exit_code"
     
     log "Waiting ${INTERVAL} seconds before next cycle..."
