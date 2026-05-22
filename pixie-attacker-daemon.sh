@@ -2,10 +2,9 @@
 
 # ============================================
 # ДЕМОН ДЛЯ PIXIE DUST ATTACKER
-# Запускает атаку в цикле
 # ============================================
 
-INTERVAL=600  # 10 минут между циклами
+INTERVAL=120  # 2 минуты между циклами
 LOG_FILE="/var/log/pixie-attacker.log"
 
 log() {
@@ -17,7 +16,6 @@ log "=== Pixie-Dust Attacker Daemon Started ==="
 while true; do
     log "--- Starting new attack cycle ---"
     
-    # Запускаем основной скрипт в неинтерактивном режиме
     /root/pixie_attacker.sh -t 30 -o /var/log/pixie_results < /dev/null
     
     exit_code=$?
